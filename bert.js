@@ -21,6 +21,7 @@ function BertClass() {
 	this.LIST = 108;
 	this.SMALL_TUPLE = 104;
 	this.LARGE_TUPLE = 105;
+	this.PID = 103;
 	this.NIL = 106;
 	this.MAP = 116;
 	this.NEW_FLOAT = 70;
@@ -206,6 +207,9 @@ BertClass.prototype.encode_object = function (Obj, buffer) {
 	if (Obj.type === "Tuple") {
 		return this.encode_tuple(Obj,buffer);
 	}
+	if (Obj.type === "PID") {
+		return this.encode_pid(Obj,buffer);
+	}
 	// Treat the object as an associative array...
 	return this.encode_map(Obj,buffer);
 };
@@ -222,6 +226,16 @@ BertClass.prototype.encode_binary = function (Obj, buffer) {
     buffer.writeUInt32BE(Obj.length,1);
     Obj.copy(buffer,5);
 	return buffer.slice(5 + Obj.length);
+};
+
+BertClass.prototype.encode_pid = function (Obj, buffer) {
+    buffer[0] = this.PID;
+    buffer = buffer.slice(1);
+    buffer = this.encode_atom(Obj.node,buffer);
+    buffer.writeUInt32BE(Obj.id,0);
+    buffer.writeUInt32BE(Obj.serial,4);
+    buffer.writeUInt8(Obj.creation,8);
+	return buffer.slice(9);
 };
 
 // undefined is null
@@ -310,6 +324,8 @@ BertClass.prototype.decode_inner = function (buffer) {
 		return this.decode_tuple(buffer, 1);
 	case this.LARGE_TUPLE:
 		return this.decode_large_tuple(buffer, 4);
+	case this.PID:
+		return this.decode_pid(buffer);
 	case this.NIL:
 		return this.decode_nil(buffer);
 	case this.MAP:
@@ -459,6 +475,27 @@ BertClass.prototype.decode_tuple = function (buffer, Count) {
 		rest: buffer
 	};
 };
+
+BertClass.prototype.decode_pid = function (buffer) {
+	var Node = this.decode_inner(buffer);
+	buffer = Node.rest;
+	var ID = this.bytes_to_int(buffer, 4, true);
+	buffer = buffer.slice(4);
+	var Serial = this.bytes_to_int(buffer, 4, true);
+	buffer = buffer.slice(4);
+	var Creation = this.bytes_to_int(buffer, 1, true);
+	buffer = buffer.slice(1);
+	return {
+		value: {
+			type: "PID",
+			node: Node.value,
+			id: ID,
+			serial: Serial,
+			creation: Creation
+		},
+		rest: buffer
+	};
+}
 
 BertClass.prototype.decode_nil = function (buffer) {
 	// nil is an empty list
